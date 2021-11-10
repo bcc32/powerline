@@ -355,7 +355,7 @@ static char * %s[] = {
 
 ;;;###autoload
 (defun powerline-concat (&rest strings)
-  "Concatonate STRINGS and pad sides by spaces."
+  "Concatenate STRINGS and pad sides by spaces."
   (concat
    " "
    (mapconcat 'identity (delq nil strings) " ")
@@ -363,7 +363,7 @@ static char * %s[] = {
 
 ;;;###autoload
 (defmacro defpowerline (name body)
-  "Create function NAME by wrapping BODY with powerline padding an propetization."
+  "Create function NAME by wrapping BODY with powerline padding and propertization."
   `(defun ,name
        (&optional face pad)
      (powerline-raw ,body face pad)))
@@ -399,7 +399,7 @@ static char * %s[] = {
     (let* ((rendered-str (format-mode-line str))
            (padded-str (concat
                         (when (and (> (length rendered-str) 0) (eq pad 'l)) " ")
-                        (if (listp str) rendered-str str)
+                        (if (stringp str) str rendered-str)
                         (when (and (> (length rendered-str) 0) (eq pad 'r)) " "))))
 
       (if face
@@ -432,16 +432,17 @@ static char * %s[] = {
 
 ;;;###autoload (autoload 'powerline-major-mode "powerline")
 (defpowerline powerline-major-mode
-  (propertize (format-mode-line mode-name)
-              'mouse-face 'mode-line-highlight
-              'help-echo "Major mode\n\ mouse-1: Display major mode menu\n\ mouse-2: Show help for major mode\n\ mouse-3: Toggle minor modes"
-              'local-map (let ((map (make-sparse-keymap)))
-                           (define-key map [mode-line down-mouse-1]
-                             `(menu-item ,(purecopy "Menu Bar") ignore
-                                         :filter (lambda (_) (mouse-menu-major-mode-map))))
-                           (define-key map [mode-line mouse-2] 'describe-mode)
-                           (define-key map [mode-line down-mouse-3] mode-line-mode-menu)
-                           map)))
+  '(:propertize mode-name
+                'mouse-face 'mode-line-highlight
+                'help-echo "Major mode\n\ mouse-1: Display major mode menu\n\ mouse-2: Show help for major mode\n\ mouse-3: Toggle minor modes"
+                'local-map (let ((map (make-sparse-keymap)))
+                             (define-key map [mode-line down-mouse-1]
+                               `(menu-item ,(purecopy "Menu Bar") ignore
+                                           :filter (lambda (_) (mouse-menu-major-mode-map))))
+                             (define-key map [mode-line mouse-2] 'describe-mode)
+                             (define-key map [mode-line down-mouse-3] mode-line-mode-menu)
+                             map)
+                ))
 
 ;;;###autoload (autoload 'powerline-minor-modes "powerline")
 (defpowerline powerline-minor-modes
@@ -480,10 +481,10 @@ static char * %s[] = {
 (defpowerline powerline-vc
   (when (and (buffer-file-name (current-buffer)) vc-mode)
     (if (and window-system (not powerline-gui-use-vcs-glyph))
-        (format-mode-line '(vc-mode vc-mode))
-      (format " %s%s"
-              (char-to-string #xe0a0)
-              (format-mode-line '(vc-mode vc-mode))))))
+        '(vc-mode vc-mode)
+      '(" "
+        (:eval (char-to-string #xe0a0))
+        (vc-mode vc-mode)))))
 
 ;;;###autoload (autoload 'powerline-encoding "powerline")
 (defpowerline powerline-encoding
@@ -495,38 +496,35 @@ static char * %s[] = {
 
 ;;;###autoload (autoload 'powerline-buffer-size "powerline")
 (defpowerline powerline-buffer-size
-  (propertize
-   (if powerline-buffer-size-suffix
-       "%I"
-     "%i")
-   'mouse-face 'mode-line-highlight
-   'local-map (make-mode-line-mouse-map
-               'mouse-1 (lambda () (interactive)
-                          (setq powerline-buffer-size-suffix
-                                (not powerline-buffer-size-suffix))
-                          (force-mode-line-update)))))
+  '(:propertize
+    (if powerline-buffer-size-suffix
+        "%I"
+      "%i")
+    'mouse-face 'mode-line-highlight
+    'local-map (make-mode-line-mouse-map
+                'mouse-1 (lambda () (interactive)
+                           (setq powerline-buffer-size-suffix
+                                 (not powerline-buffer-size-suffix))
+                           (force-mode-line-update)))))
 
 ;;;###autoload (autoload 'powerline-buffer-id "powerline")
 (defun powerline-buffer-id (&optional face pad)
-  (powerline-raw
-   (format-mode-line
-    (concat " " (propertize
-                 (format-mode-line mode-line-buffer-identification)
-                 'face face
-                 'mouse-face 'mode-line-highlight
-                 'help-echo "Buffer name\n\ mouse-1: Previous buffer\n\ mouse-3: Next buffer"
-                 'local-map (let ((map (make-sparse-keymap)))
-                              (define-key map [mode-line mouse-1] 'mode-line-previous-buffer)
-                              (define-key map [mode-line mouse-3] 'mode-line-next-buffer)
-                              map))))
-   face pad))
+  (let ((without-pad
+         '(:propertize
+           (" " mode-line-buffer-identification)
+           'face face
+           'mouse-face 'mode-line-highlight
+           'help-echo "Buffer name\n\ mouse-1: Previous buffer\n\ mouse-3: Next buffer"
+           'local-map (let ((map (make-sparse-keymap)))
+                        (define-key map [mode-line mouse-1] 'mode-line-previous-buffer)
+                        (define-key map [mode-line mouse-3] 'mode-line-next-buffer)
+                        map))))
+    (if pad
+        (list pad without-pad)
+      without-pad)))
 
 ;;;###autoload (autoload 'powerline-process "powerline")
-(defpowerline powerline-process
-  (cond
-   ((symbolp mode-line-process) (symbol-value mode-line-process))
-   ((listp mode-line-process) (format-mode-line mode-line-process))
-   (t mode-line-process)))
+(defpowerline powerline-process mode-line-process)
 
 (defvar pl/default-mode-line mode-line-format)
 
@@ -568,7 +566,7 @@ static char * %s[] = {
 ;; Watch focus changes
 (if (boundp 'after-focus-change-function)
   (add-function :after after-focus-change-function
-		(lambda ()
+                (lambda ()
                   (if (frame-focus-state)
                       (powerline-set-selected-window)
                     (powerline-unset-selected-window))))
